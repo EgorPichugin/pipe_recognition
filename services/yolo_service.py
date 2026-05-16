@@ -8,9 +8,12 @@ from fastapi import HTTPException
 from PIL import Image
 
 
-MODEL_PATH = Path("yolo_models") / "best.pt"
-OBJECTS_DETECTED_PATH = Path("objects_detected")
-YOLO_CONFIG_PATH = Path(".ultralytics")
+DATA_DIR = Path(os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "."))
+MODEL_PATH = Path(os.getenv("YOLO_MODEL_PATH", Path("yolo_models") / "best.pt"))
+OBJECTS_DETECTED_PATH = Path(
+    os.getenv("OBJECTS_DETECTED_PATH", DATA_DIR / "objects_detected")
+)
+YOLO_CONFIG_PATH = Path(os.getenv("YOLO_CONFIG_PATH", DATA_DIR / ".ultralytics"))
 COMBINED_DUCT_WIRE_CLASSES = {"duct", "wire"}
 CATEGORY_CLASSES = {"tape", *COMBINED_DUCT_WIRE_CLASSES}
 TARGET_CLASSES = {"address", *CATEGORY_CLASSES}

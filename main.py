@@ -80,7 +80,6 @@ async def recognize_pipe_upload_batch(
             status_code=400,
             detail="ids and images must contain the same number of items",
         )
-    print(len(ids), len(images))
     results: list[RecognitionResponse] = []
     for index, (id, image) in enumerate(zip(ids, images), start=1):
         image_bytes = await image.read()
