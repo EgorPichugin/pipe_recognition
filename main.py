@@ -43,10 +43,15 @@ cors_origins = [
     for origin in os.getenv("FRONTEND_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
     if origin.strip()
 ]
+cors_origin_regex = os.getenv(
+    "FRONTEND_ORIGIN_REGEX",
+    r"^https://pipe-recognition-client(?:-[a-z0-9-]+)?\.vercel\.app$",
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
