@@ -106,7 +106,7 @@ def get_category_signals(class_confidences: dict[str, float]) -> dict[str, float
 def run_yolo_recognition(
     image_bytes: bytes,
     image_name: str,
-) -> tuple[int, float, float, float]:
+) -> tuple[int, float]:
     try:
         image = Image.open(BytesIO(image_bytes)).convert("RGB")
     except Exception:
@@ -139,4 +139,4 @@ def run_yolo_recognition(
     category = assign_category(set(category_signals))
     confidence_scores = list(category_signals.values())
     confidence = min(confidence_scores) if confidence_scores else 0.0
-    return category, 0.0, 0.0, confidence
+    return category, confidence

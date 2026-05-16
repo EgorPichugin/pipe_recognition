@@ -1,5 +1,9 @@
 fastapi
+openai
+paddleocr
+paddlepaddle
 pillow
+python-dotenv
 python-multipart
 ultralytics
 uvicorn[standard]
