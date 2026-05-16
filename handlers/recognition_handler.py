@@ -1,13 +1,14 @@
 from base64 import b64decode
 from binascii import Error as Base64Error
 import logging
+import time
 
 from fastapi import HTTPException
 
 from models.requests import RecognitionRequest
 from models.responses import RecognitionResponse
 from services.gps_extractor import extract_gps_from_bytes
-from services.gps_llm_fallback_service import extract_gps_with_openai_vision
+from services.gps_llm_fallback_service import extract_gps_with_llm
 from services.image_hash_service import create_image_hashvalue
 from services.recognition_service import (
     get_recognition_by_image_hashvalue,
@@ -57,20 +58,35 @@ def handle_recognition_bytes(
     if existing_result is not None:
         return existing_result
 
+    t0 = time.perf_counter()
     category, confidence = run_yolo_recognition(
         image_bytes,
         image_name,
     )
+    t_yolo = time.perf_counter() - t0
+    logger.info("TIMING yolo=%.3fs name=%s", t_yolo, image_name)
+
+    t0 = time.perf_counter()
     try:
         gps = extract_gps_from_bytes(image_bytes)
     except Exception as exc:
         logger.warning("Local OCR GPS extraction failed: %s", exc)
         gps = None
+    t_ocr = time.perf_counter() - t0
+    logger.info(
+        "TIMING ocr=%.3fs result=%s name=%s",
+        t_ocr,
+        gps.confidence_level if gps else "EXC",
+        image_name,
+    )
 
+    t0 = time.perf_counter()
     if gps is None or gps.confidence_level == "NO_GPS":
-        llm_gps = extract_gps_with_openai_vision(image_bytes)
+        llm_gps = extract_gps_with_llm(image_bytes)
         if llm_gps is not None:
             gps = llm_gps
+    t_llm = time.perf_counter() - t0
+    logger.info("TIMING llm_fallback=%.3fs name=%s", t_llm, image_name)
 
     latitude = gps.latitude if gps is not None else 0.0
     longitude = gps.longitude if gps is not None else 0.0
