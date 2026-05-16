@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -31,12 +32,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pipe Recognition API", lifespan=lifespan)
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://pipe-recognition-client-r1wnueozr-egors-projects-ef79e3c7.vercel.app",
+]
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
