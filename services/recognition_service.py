@@ -58,6 +58,31 @@ def get_recognition_by_image_hashvalue(
     )
 
 
+def get_all_recognitions() -> list[RecognitionResponse]:
+    with sqlite3.connect(DB_PATH) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, image_name, category, latitude, longitude, confidence
+            FROM recognition_results
+            ORDER BY id
+            """
+        ).fetchall()
+
+    return [
+        RecognitionResponse(
+            id=row["id"],
+            image_name=row["image_name"],
+            category=row["category"],
+            latitude=row["latitude"],
+            longitude=row["longitude"],
+            confidence=row["confidence"],
+            status="duplicate_name",
+        )
+        for row in rows
+    ]
+
+
 def save_recognition_result(
     image_name: str,
     image_hashvalue: str,

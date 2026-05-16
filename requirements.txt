@@ -1,4 +1,6 @@
 fastapi
+folium
+google-generativeai
 openai
 paddleocr
 paddlepaddle

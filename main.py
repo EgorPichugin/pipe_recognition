@@ -4,6 +4,7 @@ import logging
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 
 load_dotenv()
@@ -12,6 +13,8 @@ from database import init_db
 from handlers.recognition_handler import handle_recognition, handle_recognition_bytes
 from models.requests import RecognitionRequest
 from models.responses import RecognitionResponse
+from services.map_service import build_map
+from services.recognition_service import get_all_recognitions
 
 
 logging.basicConfig(
@@ -62,6 +65,18 @@ async def recognize_pipe_upload(
         image_name=image_name,
         image_bytes=image_bytes,
     )
+
+@app.get("/map", response_class=HTMLResponse)
+def get_map() -> HTMLResponse:
+    rows = get_all_recognitions()
+    if not rows:
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:1rem'>No recognitions yet.</h3>")
+    try:
+        html = build_map([r.model_dump() for r in rows])
+    except ValueError:
+        return HTMLResponse("<h3 style='font-family:sans-serif;padding:1rem'>No valid GPS points yet.</h3>")
+    return HTMLResponse(html)
+
 
 if __name__ == "__main__":
     import uvicorn
