@@ -15,7 +15,7 @@ from handlers.recognition_handler import handle_recognition, handle_recognition_
 from models.requests import RecognitionRequest
 from models.responses import RecognitionResponse
 from services.map_service import build_map
-from services.recognition_service import get_all_recognitions
+from services.recognition_service import delete_all_recognitions, get_all_recognitions
 
 
 logging.basicConfig(
@@ -120,6 +120,15 @@ def get_map() -> HTMLResponse:
     except ValueError:
         return HTMLResponse("<h3 style='font-family:sans-serif;padding:1rem'>No valid GPS points yet.</h3>")
     return HTMLResponse(html)
+
+
+@app.delete("/recognitions")
+def delete_recognitions() -> dict[str, int | str]:
+    deleted_count = delete_all_recognitions()
+    return {
+        "status": "ok",
+        "deleted_count": deleted_count,
+    }
 
 
 if __name__ == "__main__":

@@ -112,3 +112,9 @@ def save_recognition_result(
                 result.confidence,
             ),
         )
+
+
+def delete_all_recognitions() -> int:
+    with sqlite3.connect(DB_PATH) as connection:
+        cursor = connection.execute("DELETE FROM recognition_results")
+        return cursor.rowcount
