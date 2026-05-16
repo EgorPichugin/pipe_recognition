@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\pichu\\Documents\\repos\\pipe_recognition\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "a2b86aa40d8f406ce15f5c388491416829a474688527c94208c08f67c4db6fb2",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}
