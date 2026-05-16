@@ -6,7 +6,6 @@ pydantic
 Pillow
 openai
 python-dotenv
-easyocr
 numpy
 google-generativeai
 reportlab

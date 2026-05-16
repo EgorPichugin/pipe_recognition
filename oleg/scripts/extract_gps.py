@@ -1,48 +1,34 @@
 #!/usr/bin/env python3
-"""Extract GPS coordinates from watermark on construction-site photos.
+"""GPS watermark parsing utilities for construction-site photos.
+
+This module is the parsing core: regexes for DMS / decimal forms, math for
+converting DMS → decimal, Austria-bbox validation, and band cropping. It
+is imported by ``extract_gps_paddle_v2.py`` (the active CLI), which feeds
+OCR output through ``parse_coordinates`` / ``validate_austria`` and uses
+``crop_bands`` to focus OCR on the watermark zone.
 
 Strategy:
-1. Crop top and bottom bands (full width, 40% height each). The watermark
-   sits in one of them regardless of which corner the camera app placed it.
-2. Upscale each band 2x so OCR sees more pixels per glyph — fine marks like
-   ``°`` and ``'`` survive recognition far better at 2x.
-3. Run EasyOCR with a character allowlist restricted to GPS symbols. The
-   model physically cannot output ``*`` or ``9`` in place of ``°`` because
-   those characters are filtered out of the allowed set.
-4. Regex-parse for DMS or decimal coordinate patterns.
-5. Validate against Austria coordinate range to drop OCR false positives.
-
-Writes one JSON per image to ``out/gps/<stem>.json`` with the parsed
-coordinates plus the raw OCR text per band for debugging.
+1. ``crop_bands`` returns the top and bottom 40% of the image — the
+   watermark always sits in one of them.
+2. ``parse_coordinates`` tries DMS / decimal regexes (clean + rescue
+   variants for OCR-mangled inputs), with hemisphere inference when the
+   trailing N/S/E/W got chopped off.
+3. ``validate_austria`` drops matches outside Austria's bounding box.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
 import re
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path  # noqa: F401  (kept for type-hint compatibility with callers)
 
-import numpy as np
 from PIL import Image
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = Path("/Users/olegkulikov/Desktop/hackathon Vienna/Beispiele")
-DEFAULT_OUT = REPO_ROOT / "out" / "gps"
-DEFAULT_LIMIT = 5
-
-GPS_ALLOWLIST = "0123456789°'\"NSEW.,± m"
 BAND_HEIGHT_FRAC = 0.40
-UPSCALE = 2.0
 
 # Austria bounding box (a bit padded)
 AUSTRIA_LAT = (46.0, 49.5)
 AUSTRIA_LON = (9.0, 17.5)
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
 # DMS with proper or *,o degree symbol — e.g. "46°33'56.238\"N", "46*33 66,238\"N"
 DMS_RE = re.compile(
@@ -414,128 +400,3 @@ def crop_bands(img: Image.Image) -> dict[str, Image.Image]:
         "top_band": img.crop((0, 0, w, bh)),
         "bottom_band": img.crop((0, h - bh, w, h)),
     }
-
-
-def upscale(img: Image.Image, factor: float = UPSCALE) -> Image.Image:
-    w, h = img.size
-    return img.resize((int(w * factor), int(h * factor)), Image.LANCZOS)
-
-
-def ocr_band(reader, band: Image.Image, use_allowlist: bool = False) -> list[tuple]:
-    arr = np.array(band.convert("RGB"))
-    if use_allowlist:
-        return reader.readtext(arr, allowlist=GPS_ALLOWLIST)
-    return reader.readtext(arr)
-
-
-def iter_images(source: Path) -> list[Path]:
-    if source.is_file():
-        return [source]
-    if not source.is_dir():
-        return []
-    return sorted(p for p in source.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
-
-
-def output_stem_for(image_path: Path, source_root: Path) -> str:
-    try:
-        relative = image_path.relative_to(source_root)
-    except ValueError:
-        relative = Path(image_path.name)
-    return "__".join(relative.with_suffix("").parts)
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
-    parser.add_argument("--langs", default="de,en", help="EasyOCR languages.")
-    parser.add_argument("--gpu", action="store_true")
-    args = parser.parse_args()
-
-    try:
-        import easyocr
-    except ImportError:
-        print("ERROR: easyocr not installed. pip install easyocr", file=sys.stderr)
-        return 1
-
-    images = iter_images(args.source)
-    if not images:
-        print(f"No images in {args.source}", file=sys.stderr)
-        return 1
-    if args.limit and args.limit > 0:
-        images = images[: args.limit]
-
-    args.out.mkdir(parents=True, exist_ok=True)
-    source_root = args.source if args.source.is_dir() else args.source.parent
-    languages = [l.strip() for l in args.langs.split(",") if l.strip()]
-
-    print(f"Loading EasyOCR reader (langs={languages})...")
-    reader = easyocr.Reader(languages, gpu=args.gpu)
-    print(f"Processing {len(images)} images.\n")
-
-    failures = 0
-    for idx, image_path in enumerate(images, 1):
-        stem = output_stem_for(image_path, source_root)
-        print(f"[{idx}/{len(images)}] {stem} ... ", end="", flush=True)
-        try:
-            with Image.open(image_path) as img:
-                img = img.convert("RGB")
-                bands = crop_bands(img)
-
-            band_results: dict[str, dict] = {}
-            for band_name, band_img in bands.items():
-                upscaled = upscale(band_img)
-                detections = ocr_band(reader, upscaled)
-                texts = [d[1] for d in detections]
-                joined = " ".join(texts)
-                parsed = parse_coordinates(joined)
-                validated = validate_austria(parsed)
-                band_results[band_name] = {
-                    "raw_lines": texts,
-                    "joined": joined,
-                    "parsed": parsed,
-                    "validated_austria": validated,
-                }
-
-            best_band = None
-            for name, br in band_results.items():
-                if "lat" in br["validated_austria"] and "lon" in br["validated_austria"]:
-                    best_band = name
-                    break
-            if not best_band:
-                for name, br in band_results.items():
-                    if br["validated_austria"]:
-                        best_band = name
-                        break
-
-            final = band_results[best_band]["validated_austria"] if best_band else {}
-            result = {
-                "image": image_path.name,
-                "source_path": str(image_path),
-                "best_band": best_band,
-                "gps": final,
-                "bands": band_results,
-                "processed_at": datetime.now(timezone.utc).isoformat(),
-            }
-            out_path = args.out / f"{stem}.json"
-            out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-
-            lat = final.get("lat", {}).get("value")
-            lon = final.get("lon", {}).get("value")
-            if lat is not None and lon is not None:
-                print(f"OK band={best_band} lat={lat} lon={lon}")
-            elif lat is not None or lon is not None:
-                print(f"PARTIAL band={best_band} lat={lat} lon={lon}")
-            else:
-                print("NO GPS")
-        except Exception as exc:  # noqa: BLE001
-            failures += 1
-            print(f"FAILED: {exc}")
-
-    print(f"\nDone. Processed: {len(images) - failures}, Failed: {failures}")
-    return 0 if failures == 0 else 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

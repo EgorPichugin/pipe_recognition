@@ -8,7 +8,7 @@
 |---|-----|-----------|--------|
 | 1 | **Инпут**: одно фото или батч от пользователя | `frontend/components/InputSection.vue` → `POST /report/preview` | частично — UI принимает одну картинку, батч и приём сырых файлов на бэкенде ещё не разведены |
 | 2 | **Имя + хэш**: дедуп, проверка расширения, sha256 | — | НЕТ |
-| 3 | **OCR** для гео-водяного знака | `scripts/extract_gps_paddle_v2.py` (+ `extract_gps.py`, `ocr_images.py`, `extract_gps_apple.py`) | ЕСТЬ, но как standalone CLI — не подключено к FastAPI |
+| 3 | **OCR** для гео-водяного знака | `scripts/extract_gps_paddle_v2.py` (использует парсинг из `extract_gps.py`, Gemini-fallback в `gemini_gps_fallback.py`) | ЕСТЬ, но как standalone CLI — не подключено к FastAPI |
 | 4 | **YOLO** + категоризация объектов на фото | — | НЕТ |
 | 5 | **Нанесение гео-меток на карту** | `scripts/summarize_gps.py` собирает CSV/MD сводку; рендера карты нет | частично — есть агрегация, нет визуализации |
 | 6 | **Генерация репорта** (DOCX) | `src/services/report_service.py` + `src/models/report.py` | ЕСТЬ на дамми-данных; реальный пайплайн не питает его |
@@ -46,12 +46,10 @@ repo/
 │  └─ docs/images/sample_wall_image.jpg
 │
 ├─ scripts/                           # офлайновые CLI-инструменты (не подключены к API)
-│  ├─ ocr_images.py                   # EasyOCR прогон по папке
-│  ├─ combine_ocr_results.py
 │  ├─ extract_gps.py                  # ядро: парсинг DMS/decimal, валидация Австрии
-│  ├─ extract_gps_paddle.py           # PaddleOCR вариант
-│  ├─ extract_gps_paddle_v2.py        # актуальный: + 3-флаг confidence (HIGH/LOW/NO_GPS)
-│  ├─ extract_gps_apple.py            # Apple Photos metadata
+│  ├─ extract_gps_paddle.py           # PaddleOCR вариант (легаси)
+│  ├─ extract_gps_paddle_v2.py        # актуальный: PaddleOCR mobile + 3-флаг confidence + --input-json
+│  ├─ gemini_gps_fallback.py          # LLM-fallback на GPS_LOW / NO_GPS (Google Gemini Vision)
 │  └─ summarize_gps.py                # сводка JSON → CSV + MD
 │
 ├─ out/                               # выхлоп скриптов (не коммитим в прод)
@@ -59,7 +57,8 @@ repo/
 │  └─ ...
 │
 ├─ requirements.txt                   # fastapi, uvicorn, docxtpl, python-docx, pydantic, Pillow,
-│                                     # openai, python-dotenv, easyocr, numpy (paddleocr нужен отдельно)
+│                                     # openai, python-dotenv, numpy, google-generativeai, reportlab
+│                                     # (paddleocr + paddlepaddle нужны отдельно)
 ├─ .env.example                       # OPENAI_API_KEY
 └─ ARCHITECTURE.md                    # этот файл
 ```

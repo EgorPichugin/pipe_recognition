@@ -112,26 +112,6 @@ def decimal_to_dms(value: float, hemi_axis: str) -> str:
     return f"{deg}°{minutes}'{seconds}\"{hemi}"
 
 
-def _run_apple_vision_fallback(image_path: Path) -> list[tuple[str, float]] | None:
-    """Run Apple Vision OCR via ocrmac. Returns the same shape as run_paddle:
-    list of (text, confidence). Returns None on any import or runtime failure
-    so callers can degrade gracefully on non-mac platforms.
-    """
-    try:
-        from ocrmac import ocrmac
-    except ImportError:
-        return None
-    try:
-        annotations = ocrmac.OCR(
-            str(image_path),
-            recognition_level="accurate",
-            language_preference=["de-DE", "en-US"],
-        ).recognize()
-    except Exception:  # noqa: BLE001
-        return None
-    return [(text, float(conf)) for text, conf, _bbox in annotations]
-
-
 def build_paddle_ocr(lang: str = "german"):
     from paddleocr import PaddleOCR
 
@@ -363,23 +343,6 @@ def process_image(
         if lon_f is not None:
             best_lon, best_lon_conf, best_lon_band = lon_f, lon_conf_f, "full_image_fallback"
 
-    # Fallback 2: still nothing → Apple Vision on full image (macOS-only).
-    if best_lat is None and best_lon is None:
-        apple_detections = _run_apple_vision_fallback(image_path)
-        if apple_detections is not None:
-            lat_a, lon_a, lat_conf_a, lon_conf_a = best_candidates_from_lines(apple_detections)
-            band_results["apple_vision_fallback"] = {
-                "detections": [{"text": t, "ocr_confidence": round(c, 4)} for t, c in apple_detections],
-                "candidate_lat": lat_a,
-                "candidate_lon": lon_a,
-                "candidate_lat_conf": lat_conf_a if lat_conf_a >= 0 else None,
-                "candidate_lon_conf": lon_conf_a if lon_conf_a >= 0 else None,
-            }
-            if lat_a is not None:
-                best_lat, best_lat_conf, best_lat_band = lat_a, lat_conf_a, "apple_vision_fallback"
-            if lon_a is not None:
-                best_lon, best_lon_conf, best_lon_band = lon_a, lon_conf_a, "apple_vision_fallback"
-
     gps: dict = {}
     lat_flag = None
     lon_flag = None
@@ -407,7 +370,7 @@ def process_image(
 
     record_flag = overall_flag(lat_flag, lon_flag)
 
-    # Fallback 3: Gemini Vision LLM. Triggered when overall_flag is LOW or
+    # Fallback 2: Gemini Vision LLM. Triggered when overall_flag is LOW or
     # NO_GPS. Per axis: fill missing slots, upgrade LOW→HIGH if Gemini is
     # HIGH, otherwise leave the OCR-derived value alone.
     gemini_used = False
