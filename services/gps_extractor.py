@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
+import logging
 from pathlib import Path
+import time
 from typing import Any
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
+
+_ocr_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ocr")
 
 from services.gps_parser import (
     StrictDmsError,
@@ -148,16 +155,49 @@ def confidence_level(
     return "GPS_LOW"
 
 
+def _run_ocr_timed(ocr, band: Image.Image) -> tuple[list[tuple[str, float]], float]:
+    t0 = time.perf_counter()
+    detections = run_ocr(ocr, band)
+    return detections, time.perf_counter() - t0
+
+
 def extract_gps_from_image(image: Image.Image) -> GpsExtractionResult:
+    t0 = time.perf_counter()
     ocr = get_ocr()
+    t_init = time.perf_counter() - t0
     all_detections: list[tuple[str, float]] = []
 
     bands = crop_bands(image.convert("RGB"))
-    for band in bands.values():
-        all_detections.extend(run_ocr(ocr, band))
+    band_times: dict[str, float] = {}
 
+    t_par = time.perf_counter()
+    futures = {
+        name: _ocr_executor.submit(_run_ocr_timed, ocr, band)
+        for name, band in bands.items()
+    }
+    for name, future in futures.items():
+        detections, duration = future.result()
+        band_times[name] = duration
+        all_detections.extend(detections)
+    t_par_total = time.perf_counter() - t_par
+
+    t_full = 0.0
     if not all_detections:
+        t_f = time.perf_counter()
         all_detections.extend(run_ocr(ocr, image))
+        t_full = time.perf_counter() - t_f
+
+    logger.info(
+        "TIMING ocr_breakdown init=%.3fs top=%.3fs bottom=%.3fs parallel_wall=%.3fs full=%.3fs detections=%d image_size=%sx%s",
+        t_init,
+        band_times.get("top_band", 0.0),
+        band_times.get("bottom_band", 0.0),
+        t_par_total,
+        t_full,
+        len(all_detections),
+        image.size[0],
+        image.size[1],
+    )
 
     latitude, longitude, latitude_confidence, longitude_confidence = find_best_coordinates(
         all_detections

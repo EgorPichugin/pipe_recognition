@@ -15,7 +15,17 @@ from services.gps_parser import AUSTRIA_LAT, AUSTRIA_LON
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-DEFAULT_MODEL = "gpt-4.1-mini"
+DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+
+LLM_PROMPT = (
+    "Read the visible GPS coordinate watermark in this image. "
+    "Return only JSON with keys: latitude, longitude, confidence_level. "
+    "confidence_level must be GPS_HIGH if both coordinates are clearly "
+    "readable, otherwise GPS_LOW. Use decimal degrees. If coordinates are "
+    "not readable, return {\"latitude\": null, \"longitude\": null, "
+    "\"confidence_level\": \"NO_GPS\"}. Do not guess."
+)
 
 
 def get_image_mime_type(image_bytes: bytes) -> str:
@@ -78,20 +88,16 @@ def parse_llm_response(text: str) -> GpsExtractionResult | None:
     )
 
 
-def extract_gps_with_openai_vision(image_bytes: bytes) -> GpsExtractionResult | None:
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.warning("Skipping LLM GPS fallback because OPENAI_API_KEY is not set.")
-        return None
-
+def _call_openai(image_bytes: bytes) -> str | None:
     try:
         from openai import OpenAI
     except ImportError:
-        logger.warning("Skipping LLM GPS fallback because openai is not installed.")
+        logger.warning("Skipping OpenAI LLM fallback: openai package not installed.")
         return None
 
     image_base64 = b64encode(image_bytes).decode("utf-8")
     mime_type = get_image_mime_type(image_bytes)
-    model = os.getenv("OPENAI_GPS_MODEL", DEFAULT_MODEL)
+    model = os.getenv("OPENAI_GPS_MODEL", DEFAULT_OPENAI_MODEL)
     client = OpenAI()
 
     response = client.responses.create(
@@ -100,18 +106,7 @@ def extract_gps_with_openai_vision(image_bytes: bytes) -> GpsExtractionResult | 
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Read the visible GPS coordinate watermark in this image. "
-                            "Return only JSON with keys: latitude, longitude, "
-                            "confidence_level. confidence_level must be GPS_HIGH if "
-                            "both coordinates are clearly readable, otherwise GPS_LOW. "
-                            "Use decimal degrees. If coordinates are not readable, "
-                            "return {\"latitude\": null, \"longitude\": null, "
-                            "\"confidence_level\": \"NO_GPS\"}. Do not guess."
-                        ),
-                    },
+                    {"type": "input_text", "text": LLM_PROMPT},
                     {
                         "type": "input_image",
                         "image_url": f"data:{mime_type};base64,{image_base64}",
@@ -121,13 +116,52 @@ def extract_gps_with_openai_vision(image_bytes: bytes) -> GpsExtractionResult | 
             }
         ],
     )
+    return response.output_text
 
-    result = parse_llm_response(response.output_text)
+
+def _call_gemini(image_bytes: bytes) -> str | None:
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        logger.warning("Skipping Gemini LLM fallback: google-generativeai not installed.")
+        return None
+
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model_name = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    mime_type = get_image_mime_type(image_bytes)
+    model = genai.GenerativeModel(model_name)
+
+    response = model.generate_content(
+        [
+            LLM_PROMPT,
+            {"mime_type": mime_type, "data": image_bytes},
+        ],
+        generation_config={"response_mime_type": "application/json"},
+    )
+    return response.text
+
+
+def extract_gps_with_llm(image_bytes: bytes) -> GpsExtractionResult | None:
+    if os.getenv("OPENAI_API_KEY"):
+        provider = "openai"
+        raw_text = _call_openai(image_bytes)
+    elif os.getenv("GEMINI_API_KEY"):
+        provider = "gemini"
+        raw_text = _call_gemini(image_bytes)
+    else:
+        logger.warning("Skipping LLM GPS fallback: no OPENAI_API_KEY or GEMINI_API_KEY set.")
+        return None
+
+    if raw_text is None:
+        return None
+
+    result = parse_llm_response(raw_text)
     if result is None:
-        logger.warning("LLM GPS fallback did not return usable coordinates.")
+        logger.warning("LLM GPS fallback (%s) returned no usable coordinates.", provider)
     else:
         logger.info(
-            "LLM GPS fallback found coordinates: lat=%s lon=%s confidence=%s",
+            "LLM GPS fallback (%s) found coordinates: lat=%s lon=%s confidence=%s",
+            provider,
             result.latitude,
             result.longitude,
             result.confidence_level,
