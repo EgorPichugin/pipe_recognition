@@ -79,8 +79,8 @@ def handle_recognition_bytes(
         id=id,
         image_name=image_name,
         category=category,
-        latitude=latitude,
-        longitude=longitude,
+        latitude=0,
+        longitude=0,
         confidence=confidence,
         status="created",
     )
