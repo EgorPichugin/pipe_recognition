@@ -4,5 +4,5 @@ myenv/
 objects_detected/
 .ultralytics/
 pipe_recognition.db
-__pycache__/
+**/__pycache__/
 Ultralytics/
