@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+docxtpl
+python-docx
+pydantic
+Pillow
+openai
+python-dotenv
+easyocr
+numpy
+google-generativeai
+reportlab
