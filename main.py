@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
@@ -65,6 +65,36 @@ async def recognize_pipe_upload(
         image_name=image_name,
         image_bytes=image_bytes,
     )
+
+
+@app.post("/recognize/upload/batch", response_model=list[RecognitionResponse])
+async def recognize_pipe_upload_batch(
+    ids: list[int] = Form(...),
+    images: list[UploadFile] = File(...),
+) -> list[RecognitionResponse]:
+    if not images:
+        raise HTTPException(status_code=400, detail="images cannot be empty")
+
+    if len(ids) != len(images):
+        raise HTTPException(
+            status_code=400,
+            detail="ids and images must contain the same number of items",
+        )
+    print(len(ids), len(images))
+    results: list[RecognitionResponse] = []
+    for index, (id, image) in enumerate(zip(ids, images), start=1):
+        image_bytes = await image.read()
+        image_name = image.filename or f"uploaded_image_{id}_{index}"
+        results.append(
+            handle_recognition_bytes(
+                id=id,
+                image_name=image_name,
+                image_bytes=image_bytes,
+            )
+        )
+
+    return results
+
 
 @app.get("/map", response_class=HTMLResponse)
 def get_map() -> HTMLResponse:
