@@ -157,7 +157,11 @@ def extract_gps_with_llm(image_bytes: bytes) -> GpsExtractionResult | None:
 
     result = parse_llm_response(raw_text)
     if result is None:
-        logger.warning("LLM GPS fallback (%s) returned no usable coordinates.", provider)
+        logger.warning(
+            "LLM GPS fallback (%s) returned no usable coordinates. raw=%r",
+            provider,
+            raw_text[:300] if raw_text else raw_text,
+        )
     else:
         logger.info(
             "LLM GPS fallback (%s) found coordinates: lat=%s lon=%s confidence=%s",

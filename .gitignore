@@ -6,3 +6,4 @@ objects_detected/
 pipe_recognition.db
 __pycache__/
 Ultralytics/
+analytics/
