@@ -232,15 +232,19 @@ every request to make these numbers reproducible:
 
 ```
 TIMING yolo=0.821s name=...
-TIMING ocr_breakdown init=0.000s top=2.609s bottom=1.548s parallel_wall=2.609s full=0.000s detections=8 image_size=1536x2048
+TIMING ocr_breakdown init=0.000s top=2.609s bottom=1.548s bands_total=4.157s full=0.000s detections=8 image_size=1536x2048
 TIMING ocr=4.183s result=GPS_HIGH name=...
 TIMING llm_fallback=0.000s name=...
 ```
 
-OCR dominates the cost; the top and bottom bands run in parallel via a
-`ThreadPoolExecutor`. Roadmap for further wins: down-scaling oversized
-inputs before OCR, running YOLO concurrently with OCR, and warming both
-models in the FastAPI `lifespan`.
+OCR dominates the cost. An earlier experiment ran the top and bottom
+bands through PaddleOCR in parallel via a `ThreadPoolExecutor`, but the
+underlying engine is already CPU-bound through OpenMP, so two workers
+ended up contending for the same cores with little net speedup —
+sequential execution is the current default. Roadmap for further wins:
+down-scaling oversized inputs before OCR, running YOLO concurrently
+with OCR, capping `OMP_NUM_THREADS` so band-level parallelism can pay
+off, and warming both models in the FastAPI `lifespan`.
 
 ---
 
