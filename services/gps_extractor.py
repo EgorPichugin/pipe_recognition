@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
 import logging
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -12,8 +12,7 @@ import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
-
-_ocr_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="ocr")
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
 from services.gps_parser import (
     StrictDmsError,
@@ -170,16 +169,12 @@ def extract_gps_from_image(image: Image.Image) -> GpsExtractionResult:
     bands = crop_bands(image.convert("RGB"))
     band_times: dict[str, float] = {}
 
-    t_par = time.perf_counter()
-    futures = {
-        name: _ocr_executor.submit(_run_ocr_timed, ocr, band)
-        for name, band in bands.items()
-    }
-    for name, future in futures.items():
-        detections, duration = future.result()
+    t_bands = time.perf_counter()
+    for name, band in bands.items():
+        detections, duration = _run_ocr_timed(ocr, band)
         band_times[name] = duration
         all_detections.extend(detections)
-    t_par_total = time.perf_counter() - t_par
+    t_bands_total = time.perf_counter() - t_bands
 
     t_full = 0.0
     if not all_detections:
@@ -188,11 +183,11 @@ def extract_gps_from_image(image: Image.Image) -> GpsExtractionResult:
         t_full = time.perf_counter() - t_f
 
     logger.info(
-        "TIMING ocr_breakdown init=%.3fs top=%.3fs bottom=%.3fs parallel_wall=%.3fs full=%.3fs detections=%d image_size=%sx%s",
+        "TIMING ocr_breakdown init=%.3fs top=%.3fs bottom=%.3fs bands_total=%.3fs full=%.3fs detections=%d image_size=%sx%s",
         t_init,
         band_times.get("top_band", 0.0),
         band_times.get("bottom_band", 0.0),
-        t_par_total,
+        t_bands_total,
         t_full,
         len(all_detections),
         image.size[0],

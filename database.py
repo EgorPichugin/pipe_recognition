@@ -1,11 +1,14 @@
 from pathlib import Path
+import os
 import sqlite3
 
 
-DB_PATH = Path("pipe_recognition.db")
+DATA_DIR = Path(os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "."))
+DB_PATH = Path(os.getenv("DB_PATH", DATA_DIR / "pipe_recognition.db"))
 
 
 def init_db() -> None:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(DB_PATH) as connection:
         connection.execute(
             """

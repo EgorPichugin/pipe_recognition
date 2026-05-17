@@ -1,0 +1,11 @@
+.git/
+.venv13/
+myenv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.ultralytics/
+Ultralytics/
+objects_detected/
+pipe_recognition.db

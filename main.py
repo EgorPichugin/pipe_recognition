@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -14,7 +15,7 @@ from handlers.recognition_handler import handle_recognition, handle_recognition_
 from models.requests import RecognitionRequest
 from models.responses import RecognitionResponse
 from services.map_service import build_map
-from services.recognition_service import get_all_recognitions
+from services.recognition_service import delete_all_recognitions, get_all_recognitions
 
 
 logging.basicConfig(
@@ -31,12 +32,26 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pipe Recognition API", lifespan=lifespan)
 
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://pipe-recognition-client-r1wnueozr-egors-projects-ef79e3c7.vercel.app",
+]
+
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", ",".join(DEFAULT_CORS_ORIGINS)).split(",")
+    if origin.strip()
+]
+cors_origin_regex = os.getenv(
+    "FRONTEND_ORIGIN_REGEX",
+    r"^https://pipe-recognition-client(?:-[a-z0-9-]+)?\.vercel\.app$",
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,7 +95,6 @@ async def recognize_pipe_upload_batch(
             status_code=400,
             detail="ids and images must contain the same number of items",
         )
-    print(len(ids), len(images))
     results: list[RecognitionResponse] = []
     for index, (id, image) in enumerate(zip(ids, images), start=1):
         image_bytes = await image.read()
@@ -106,6 +120,15 @@ def get_map() -> HTMLResponse:
     except ValueError:
         return HTMLResponse("<h3 style='font-family:sans-serif;padding:1rem'>No valid GPS points yet.</h3>")
     return HTMLResponse(html)
+
+
+@app.delete("/recognitions")
+def delete_recognitions() -> dict[str, int | str]:
+    deleted_count = delete_all_recognitions()
+    return {
+        "status": "ok",
+        "deleted_count": deleted_count,
+    }
 
 
 if __name__ == "__main__":
