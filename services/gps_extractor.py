@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 import logging
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -11,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
 from services.gps_parser import (
     StrictDmsError,
